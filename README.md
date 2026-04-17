@@ -77,6 +77,12 @@ LogbookAI replaces that manual process with a two-workflow automation pipeline b
 - Google Cloud project with Sheets API and Gmail API enabled, OAuth 2.0 credentials created
 - Slack workspace with two Incoming Webhooks: one for `#logbook`, one for `#gm-brief`
 
+> **Note:** The workflow JSON files contain placeholder Slack webhook URLs
+> (`YOUR_LOGBOOK_WEBHOOK_HERE`, `YOUR_GM_BRIEF_WEBHOOK_HERE`). After importing,
+> open the Slack nodes in each workflow and replace with your own Incoming
+> Webhook URLs. In a production setup these would be stored as n8n credentials
+> rather than hardcoded in the workflow JSON.
+
 ### 1. Start n8n
 
 ```bash
