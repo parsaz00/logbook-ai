@@ -1,0 +1,499 @@
+{
+  "name": "Nightly Logbook Entry",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Nightly Shift Logbook",
+        "formDescription": "Complete this form at the end of your shift. For Sales Intervals: AM shift = Open–11am / 11am–1pm / 1pm–Close. PM shift = 5pm–7pm / 7pm–9pm / 9pm–Close.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "shift_type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "AM"
+                  },
+                  {
+                    "option": "PM"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "date",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "servers",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "bartenders",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "hosts",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "bussers",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "expo",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "managers",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "sales_interval_1",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "sales_interval_2",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "sales_interval_3",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "shift_narrative",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "incidents",
+              "fieldType": "textarea"
+            },
+            {
+              "fieldLabel": "vip_guests",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7a9ac01b-b1b8-4ea6-87e9-2b8117b67de1",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -512,
+        448
+      ],
+      "webhookId": "14291d08-140b-4061-96d6-88497bb5ade3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\n\nconst totalSales = (Number(d.sales_interval_1) || 0) +\n                   (Number(d.sales_interval_2) || 0) +\n                   (Number(d.sales_interval_3) || 0);\n\nconst i1 = d.shift_type === 'AM' ? 'Open–11am' : '5pm–7pm';\nconst i2 = d.shift_type === 'AM' ? '11am–1pm' : '7pm–9pm';\nconst i3 = d.shift_type === 'AM' ? '1pm–Close' : '9pm–Close';\n\nconst systemPrompt = `You are a restaurant operations assistant helping a shift leader format their nightly logbook entry.\n\nTake the structured data and raw notes and produce a clean, consistent, professional logbook entry with the following sections: Performance Summary, Staffing, Service Notes, Incidents & Resolution, Action Items for Next Shift, Follow-ups for Management.\n\nBe concise. Use bullet points within sections. If sales are notably high or low, call it out. If the raw notes mention anything that should be escalated, flag it under Follow-ups. If a field was left blank (e.g., no incidents, no VIP guests), handle it gracefully. Do not invent information not present in the input.`;\n\nconst userPrompt = `Please format the following shift data into a professional logbook entry.\n\nSHIFT INFORMATION:\n- Date: ${d.date}\n- Shift Type: ${d.shift_type}\n\nSTAFFING:\n- Servers: ${d.servers}\n- Bartenders: ${d.bartenders}\n- Hosts: ${d.hosts}\n- Bussers: ${d.bussers}\n- Expo: ${d.expo}\n- Managers: ${d.managers}\n\nSALES BY INTERVAL:\n- ${i1}: $${Number(d.sales_interval_1 || 0).toLocaleString()}\n- ${i2}: $${Number(d.sales_interval_2 || 0).toLocaleString()}\n- ${i3}: $${Number(d.sales_interval_3 || 0).toLocaleString()}\n- Total: $${totalSales.toLocaleString()}\n\nSHIFT NARRATIVE (raw notes):\n${d.shift_narrative}\n\nINCIDENTS:\n${d.incidents || 'None reported.'}\n\nVIP / NOTABLE GUESTS:\n${d.vip_guests || 'None noted.'}`;\n\nreturn [{\n  json: {\n    ...d,\n    systemPrompt,\n    userPrompt,\n    staffingJson: JSON.stringify({\n      servers: d.servers,\n      bartenders: d.bartenders,\n      hosts: d.hosts,\n      bussers: d.bussers,\n      expo: d.expo,\n      managers: d.managers\n    }),\n    salesJson: JSON.stringify({\n      [i1]: Number(d.sales_interval_1),\n      [i2]: Number(d.sales_interval_2),\n      [i3]: Number(d.sales_interval_3),\n      total: totalSales\n    }),\n    totalSales\n  }\n}];"
+      },
+      "id": "63d4d97b-3854-4c7d-bbe7-6896a6f41780",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 2000, system: $json.systemPrompt, messages: [{ role: 'user', content: $json.userPrompt }] }) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "cb866203-d970-40d4-8423-75cff5008c7a",
+      "name": "Call Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        48,
+        448
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "lJlCNGMVKUrBzDtz",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const claudeJson = $input.first().json;\nconst formData = $('Build Prompt').first().json;\n\nconst aiText = claudeJson.content[0].text;\n\nconst extractSection = (text, label) => {\n  const regex = new RegExp(`#{1,3}\\\\s*${label}[\\\\s\\\\S]*?(?=#{1,3}|$)`, 'i');\n  const match = text.match(regex);\n  if (!match) return '';\n  return match[0].replace(/#{1,3}[^\\n]*\\n/, '').trim();\n};\n\nconst toSlack = (text) => text\n  .replace(/^#{1,3} (.+)$/gm, '*$1*')\n  .replace(/\\*\\*(.+?)\\*\\*/g, '*$1*')\n  .replace(/^---+$/gm, '─────────────')\n  .trim();\n\nconst toPlainText = (text) => text\n  .replace(/^#{1,3} (.+)$/gm, '\\n$1\\n' + '-'.repeat(30))\n  .replace(/\\*\\*(.+?)\\*\\*/g, '$1')\n  .replace(/^---+$/gm, '-'.repeat(30))\n  .trim();\n\nreturn [{\n  json: {\n    date: formData.date,\n    shift_type: formData.shift_type,\n    staffing_json: formData.staffingJson,\n    sales_json: formData.salesJson,\n    raw_notes: formData.shift_narrative,\n    ai_formatted_entry: aiText,\n    action_items: extractSection(aiText, 'Action Items for Next Shift'),\n    follow_ups: extractSection(aiText, 'Follow-ups for Management'),\n    created_at: new Date().toISOString(),\n    slackFormatted: toSlack(aiText),\n    emailSubject: `Logbook Entry — ${formData.shift_type} Shift | ${formData.date}`,\n    emailBody: toPlainText(aiText)\n  }\n}];"
+      },
+      "id": "89dbb44a-ce14-4dcf-bdb6-a442e5c3253b",
+      "name": "Process Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1mop7_bAjSq9ize2QNE_SsV8YBkvd3tCpY-v6D0BdJao",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "logbook",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ $json.date }}",
+            "shift_type": "={{ $json.shift_type }}",
+            "staffing_json": "={{ $json.staffing_json }}",
+            "sales_json": "={{ $json.sales_json }}",
+            "raw_notes": "={{ $json.raw_notes }}",
+            "ai_formatted_entry": "={{ $json.ai_formatted_entry }}",
+            "action_items": "={{ $json.action_items }}",
+            "follow_ups": "={{ $json.follow_ups }}",
+            "created_at": "={{ $json.created_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "shift_type",
+              "displayName": "shift_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "staffing_json",
+              "displayName": "staffing_json",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "sales_json",
+              "displayName": "sales_json",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "raw_notes",
+              "displayName": "raw_notes",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "ai_formatted_entry",
+              "displayName": "ai_formatted_entry",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "action_items",
+              "displayName": "action_items",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "follow_ups",
+              "displayName": "follow_ups",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "488df73c-55bc-4e4b-b98d-69e64ba4d05c",
+      "name": "Append to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        608,
+        448
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vZBS0NF0nGN6fuTz",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/YOUR_LOGBOOK_WEBHOOK_HERE",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ text: $('Process Response').first().json.slackFormatted }) }}",
+        "options": {}
+      },
+      "id": "dcde371b-981c-4d7a-8272-0decdd317f0d",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "pzehtab287@gmail.com",
+        "subject": "={{ $('Process Response').first().json.emailSubject }}",
+        "emailType": "text",
+        "message": "={{ $('Process Response').first().json.emailBody }}",
+        "options": {}
+      },
+      "id": "8a2cc7ae-52e0-4543-97ee-eb45e2d5c065",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1168,
+        448
+      ],
+      "webhookId": "9100db91-63af-492f-93e0-e40d81ba8450",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "pwrZrHA9CuKY6hAM",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1mop7_bAjSq9ize2QNE_SsV8YBkvd3tCpY-v6D0BdJao",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "errors",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ new Date().toISOString() }}",
+            "workflow": "Nightly Logbook Entry",
+            "step": "={{ $json.node || 'unknown' }}",
+            "error_message": "={{ $json.message || JSON.stringify($json) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "step",
+              "displayName": "step",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3e71dcbd-12c7-4db1-a787-9d54959c94e0",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        48,
+        688
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vZBS0NF0nGN6fuTz",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Claude": {
+      "main": [
+        [
+          {
+            "node": "Process Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Response": {
+      "main": [
+        [
+          {
+            "node": "Append to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Slack": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "106bc843-33d5-4e9f-9ce7-1f354be7719d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a5b8c3a8ecc005b23a6da71caa8806c98bf6217265faafd35867d1edf2004098"
+  },
+  "id": "nknE6ZThuF78pEUD",
+  "tags": []
+}

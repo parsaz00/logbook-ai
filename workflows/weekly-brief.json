@@ -1,0 +1,242 @@
+{
+  "name": "Weekly GM Brief",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtHour": 18
+            }
+          ]
+        }
+      },
+      "id": "f9866f4b-868e-40cf-b91f-df33b73b9219",
+      "name": "Weekly Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1mop7_bAjSq9ize2QNE_SsV8YBkvd3tCpY-v6D0BdJao",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "logbook",
+          "mode": "name"
+        },
+        "options": {
+          "returnAllMatches": true
+        }
+      },
+      "id": "68a0e99a-e6a6-4cfe-af3a-e27f717edfe9",
+      "name": "Read Logbook Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        288,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "vZBS0NF0nGN6fuTz",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst now = new Date();\nconst sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);\n\nconst recentEntries = items.filter(item => {\n  const raw = item.json.created_at || item.json.date;\n  if (!raw) return false;\n  const d = new Date(raw);\n  return !isNaN(d.getTime()) && d >= sevenDaysAgo;\n});\n\nif (recentEntries.length === 0) {\n  throw new Error('No logbook entries found in the last 7 days. Nothing to brief.');\n}\n\nconst systemPrompt = `You are a restaurant operations analyst preparing a weekly brief for a General Manager.\n\nYou will receive the formatted logbook entries from the past seven days (up to 14 shifts: AM and PM for each day). Your job is to synthesize these into a concise, insight-driven brief that helps the GM prepare for their weekly team meeting.\n\nReturn a weekly brief with exactly these five sections. Use bullet points. Prioritize signal over volume.\n\n### Weekly Snapshot\n- Days covered and total shifts reviewed\n- Total sales for the week with a one-line characterization\n- Highlight the single best-performing shift and the single weakest shift\n\n### Recurring Operational Themes\n- Patterns that appeared across 2 or more shifts (mention count)\n- Only include themes that appeared in 2+ shifts\n\n### Staffing Observations\n- Patterns in staffing levels across the week\n- Any roles consistently over or under relative to volume\n- AM vs PM differences if notable\n\n### Sales Trends\n- Day-over-day sales pattern\n- Any days materially different from weekly average (flag if >15% above or below)\n- AM vs PM split if meaningful\n\n### Unresolved Items & GM Recommendations\n- Action items or follow-ups appearing in more than one shift and not resolved\n- Two or three specific recommendations for the GM's weekly meeting agenda\n\nBase all observations strictly on the logbook data provided. Maintain a professional, analytical tone.`;\n\nconst weekStart = sevenDaysAgo.toISOString().split('T')[0];\nconst weekEnd = now.toISOString().split('T')[0];\n\nconst entriesText = recentEntries.map((item, i) => {\n  const shift = item.json.shift_type || 'Unknown';\n  const date = item.json.date || 'Unknown date';\n  const entry = item.json.ai_formatted_entry || '(no formatted entry)';\n  return `--- Entry ${i + 1}: ${shift} Shift | ${date} ---\\n${entry}`;\n}).join('\\n\\n');\n\nconst userPrompt = `Please synthesize the following ${recentEntries.length} logbook entries (${weekStart} to ${weekEnd}) into a GM weekly brief.\\n\\n${entriesText}`;\n\nreturn [{\n  json: {\n    systemPrompt,\n    userPrompt,\n    entryCount: recentEntries.length,\n    weekStart,\n    weekEnd\n  }\n}];"
+      },
+      "id": "398040ab-de71-4abf-9ffe-5de670691142",
+      "name": "Build Weekly Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 3000, system: $json.systemPrompt, messages: [{ role: 'user', content: $json.userPrompt }] }) }}",
+        "options": {}
+      },
+      "id": "9ff418b6-c09f-42e6-9a5e-3acc28706c09",
+      "name": "Call Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        848,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "lJlCNGMVKUrBzDtz",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const claudeJson = $input.first().json;\nconst meta = $('Build Weekly Prompt').first().json;\n\nconst briefText = claudeJson.content[0].text;\n\nconst toSlack = (text) => text\n  .replace(/^#{1,3} (.+)$/gm, '*$1*')\n  .replace(/\\*\\*(.+?)\\*\\*/g, '*$1*')\n  .replace(/^---+$/gm, '─────────────')\n  .trim();\n\nconst toPlainText = (text) => text\n  .replace(/^#{1,3} (.+)$/gm, '\\n$1\\n' + '-'.repeat(30))\n  .replace(/\\*\\*(.+?)\\*\\*/g, '$1')\n  .replace(/^---+$/gm, '-'.repeat(30))\n  .trim();\n\nreturn [{\n  json: {\n    briefText,\n    weekStart: meta.weekStart,\n    weekEnd: meta.weekEnd,\n    entryCount: meta.entryCount,\n    slackFormatted: `*Weekly GM Brief — ${meta.weekStart} to ${meta.weekEnd}*\\n_(${meta.entryCount} shifts reviewed)_\\n\\n${toSlack(briefText)}`,\n    emailSubject: `Weekly GM Brief — ${meta.weekStart} to ${meta.weekEnd}`,\n    emailBody: toPlainText(briefText)\n  }\n}];"
+      },
+      "id": "00d104fe-cffd-4249-9289-bec709080318",
+      "name": "Format Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/YOUR_GM_BRIEF_WEBHOOK_HERE",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ text: $('Format Brief').first().json.slackFormatted }) }}",
+        "options": {}
+      },
+      "id": "592e608c-47ec-41f6-a17a-dfb81f112e60",
+      "name": "Post to Slack GM Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1408,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "pzehtab287@gmail.com",
+        "subject": "={{ $('Format Brief').first().json.emailSubject }}",
+        "emailType": "text",
+        "message": "={{ $('Format Brief').first().json.emailBody }}",
+        "options": {}
+      },
+      "id": "6ab3aae3-42c5-43bb-af7f-78448e0f9a65",
+      "name": "Send Weekly Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1680,
+        0
+      ],
+      "webhookId": "4c12b327-394e-4e76-8715-8db9b5cf3d01",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "pwrZrHA9CuKY6hAM",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Weekly Cron": {
+      "main": [
+        [
+          {
+            "node": "Read Logbook Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Logbook Sheet": {
+      "main": [
+        [
+          {
+            "node": "Build Weekly Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Weekly Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Claude": {
+      "main": [
+        [
+          {
+            "node": "Format Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Brief": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack GM Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Slack GM Brief": {
+      "main": [
+        [
+          {
+            "node": "Send Weekly Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "36d4f868-2f9f-48fd-b3e4-fbe117ae5f13",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a5b8c3a8ecc005b23a6da71caa8806c98bf6217265faafd35867d1edf2004098"
+  },
+  "id": "ro7Uz6oVJUkDu2zx",
+  "tags": []
+}
